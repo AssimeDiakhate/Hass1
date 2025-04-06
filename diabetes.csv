@@ -1,0 +1,120 @@
+# Charger les bibliothèques nécessaires
+library(tidyverse)
+library(caret)
+library(MASS)
+library(ggplot2)
+library(GGally)
+
+# Charger la base de données diabetes
+diabetes <- read.table(file.choose(), sep=";", header=TRUE)
+
+# Afficher les premières lignes pour vérifier la structure des données
+head(diabetes)
+summary(diabetes)
+str(diabetes)
+
+# Statistiques descriptives pour les variables quantitatives
+summary(diabetes[, c("Pregnancies", "Glucose", "BloodPressure", "SkinThickness", "Insulin", "BMI", "DiabetesPedigreeFunction", "Age")])
+
+# Répartition des résultats (Outcome)
+table(diabetes$Outcome)
+
+# Visualisation des données avec des boxplots
+# Boxplot pour Glucose
+boxplot(Glucose ~ Outcome, data = diabetes,
+        main = "Glucose par Outcome",
+        xlab = "Outcome", ylab = "Glucose",
+        col = c("lightblue", "lightpink"))
+
+# Boxplot pour BMI
+boxplot(BMI ~ Outcome, data = diabetes,
+        main = "BMI par Outcome",
+        xlab = "Outcome", ylab = "BMI",
+        col = c("lightblue", "lightpink"))
+
+# Boxplot pour Age
+boxplot(Age ~ Outcome, data = diabetes,
+        main = "Age par Outcome",
+        xlab = "Outcome", ylab = "Age",
+        col = c("lightblue", "lightpink"))
+
+# Matrice de dispersion (pairplot)
+ggpairs(diabetes[, c("Glucose", "BMI", "Age", "Outcome")], 
+        mapping = aes(color = as.factor(Outcome)),
+        title = "Matrice de dispersion pour Diabetes")
+
+# Nettoyer les données (supprimer les valeurs manquantes)
+diabetes_clean <- na.omit(diabetes)
+
+# Analyse Discriminante Linéaire (LDA)
+lda_diabetes <- lda(Outcome ~ Glucose + BMI + Age, data = diabetes_clean)
+
+# Afficher les résultats de l'analyse
+print(lda_diabetes)
+
+# Prédire les scores LDA pour chaque individu
+lda_values <- predict(lda_diabetes)
+
+# Ajouter les scores aux données
+diabetes_clean$LD1 <- lda_values$x[,1]
+
+# Visualiser les résultats
+ggplot(diabetes_clean, aes(x = LD1, color = as.factor(Outcome))) +
+  geom_density() +
+  theme_minimal() +
+  labs(title = "Analyse Discriminante Linéaire pour Diabetes",
+       x = "LD1",
+       y = "Densité")
+
+# Diviser les données en ensembles d'entraînement et de test
+set.seed(123)  # Pour la reproductibilité
+train_index <- createDataPartition(diabetes_clean$Outcome, p = 0.8, list = FALSE)
+train <- diabetes_clean[train_index, ]
+test <- diabetes_clean[-train_index, ]
+
+# Appliquer LDA sur les données d'entraînement
+lda_model <- lda(Outcome ~ Glucose + BMI + Age, data = train)
+
+# Prédire sur les données de test
+pred <- predict(lda_model, newdata = test)
+
+# Afficher les prédictions
+print(pred$class)
+
+# Matrice de confusion
+conf_matrix <- table(Prediction = pred$class, Réel = test$Outcome)
+print(conf_matrix)
+
+# Calculer la précision
+precision <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Précision :", precision))
+
+# Calculer le taux d'erreur de classification
+taux_erreur <- 1 - sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Taux d'erreur de classification :", taux_erreur))
+
+# Calculer les centroïdes pour chaque classe
+centroides <- aggregate(. ~ Outcome, data = train, FUN = mean)
+print("Centroïdes pour chaque classe :")
+print(centroides)
+
+# Calculer la matrice de covariance
+cov_matrix <- cov(train[, c("Glucose", "BMI", "Age")])
+print("Matrice de covariance :")
+print(cov_matrix)
+
+# Inverser la matrice de covariance
+inv_cov_matrix <- solve(cov_matrix)
+print("Matrice de covariance inverse :")
+print(inv_cov_matrix)
+
+# Calculer les distances de Mahalanobis pour chaque classe
+Mahalanobis_distance_0 <- mahalanobis(test[, c("Glucose", "BMI", "Age")], centroides[1, 1], inv_cov_matrix)
+Mahalanobis_distance_1 <- mahalanobis(test[, c("Glucose", "BMI", "Age")], centroides[2, 1], inv_cov_matrix)
+
+# Afficher les résultats
+print("Distances de Mahalanobis par rapport à Outcome = 0 :")
+print(Mahalanobis_distance_0)
+
+print("Distances de Mahalanobis par rapport à Outcome = 1 :")
+print(Mahalanobis_distance_1)
